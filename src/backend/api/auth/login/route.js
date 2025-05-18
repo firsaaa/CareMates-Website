@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import pool from '../../../lib/db';
-import { loginSchema } from '../../../lib/validation';
-import { comparePassword, generateToken } from '../../../lib/auth';
+import pool from '../../../../lib/db';
+import { loginSchema } from '../../../../lib/validation';
+import { comparePassword, generateToken } from '../../../../lib/auth';
 
 export async function POST(req) {
   try {
