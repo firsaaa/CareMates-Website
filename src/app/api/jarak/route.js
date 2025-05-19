@@ -1,51 +1,8 @@
 import { NextResponse } from 'next/server';
-import pool from '../../lib/db';
-import { getUserFromRequest, isAuthorized } from '../../lib/auth';
-import { jarakSchema } from '../../lib/validation';
-import { UserRole } from '../../lib/constants';
-
-export async function GET(req) {
-  try {
-    const user = getUserFromRequest(req);
-    
-    // Admin can see all distances, caregivers can only see their own distances
-    let query;
-    let params = [];
-    
-    if (isAuthorized(user, [UserRole.ADMIN])) {
-      query = `
-        SELECT j.*, u.nama as caregiver_nama, p.nama as patient_nama 
-        FROM jarak j
-        JOIN users u ON j.id_caregiver = u.id
-        JOIN patients p ON j.id_patient = p.id
-      `;
-    } else if (isAuthorized(user, [UserRole.CAREGIVER])) {
-      query = `
-        SELECT j.*, u.nama as caregiver_nama, p.nama as patient_nama 
-        FROM jarak j
-        JOIN users u ON j.id_caregiver = u.id
-        JOIN patients p ON j.id_patient = p.id
-        WHERE j.id_caregiver = $1
-      `;
-      params = [user.id];
-    } else {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-    
-    const result = await pool.query(query, params);
-    
-    return NextResponse.json(result.rows);
-  } catch (error) {
-    console.error('Error getting distances:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+import pool from '../../../lib/db';
+import { getUserFromRequest, isAuthorized } from '../../../lib/auth';
+import { jarakSchema } from '../../../lib/validation';
+import { UserRole } from '../../../lib/constants';
 
 export async function POST(req) {
   try {

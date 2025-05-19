@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import pool from '../../../lib/db';
-import { getUserFromRequest, isAuthorized } from '../../../lib/auth';
-import { patientSchema } from '../../../lib/validation';
-import { UserRole } from '../../../lib/constants';
+import pool from '../../../../lib/db';
+import { getUserFromRequest, isAuthorized } from '../../../../lib/auth';
+import { patientSchema } from '../../../../lib/validation';
+import { UserRole } from '../../../../lib/constants';
 
 export async function GET(req, { params }) {
   try {
