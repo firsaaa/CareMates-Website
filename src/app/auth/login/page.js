@@ -10,26 +10,41 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [isApiAvailable, setIsApiAvailable] = useState(true)
+  const [redirecting, setRedirecting] = useState(false)
+  const [isClient, setIsClient] = useState(false)
 
-  // Cek status API saat komponen dimuat
+  // Pastikan kode hanya dijalankan di browser
   useEffect(() => {
-    async function checkApiStatus() {
+    setIsClient(true)
+  }, [])
+
+  // Cek jika user sudah login
+  useEffect(() => {
+    if (!isClient) return
+
+    const checkAuth = () => {
       try {
-        const res = await fetch("/", { 
-          method: "GET",
-          cache: "no-store",
-          next: { revalidate: 0 }
+        const token = localStorage.getItem("token")
+        const user = localStorage.getItem("user")
+
+        console.log("Memeriksa autentikasi di halaman login:", {
+          hasToken: !!token,
+          hasUser: !!user,
+          redirecting: redirecting,
         })
-        setIsApiAvailable(res.ok)
-      } catch (err) {
-        console.warn("API status check failed:", err)
-        setIsApiAvailable(false)
+
+        if (token && user && !redirecting) {
+          console.log("User terautentikasi, mengarahkan ke dashboard...")
+          setRedirecting(true)
+          router.replace("/dashboard")
+        }
+      } catch (error) {
+        console.error("Error saat memeriksa autentikasi:", error)
       }
     }
 
-    checkApiStatus()
-  }, [])
+    checkAuth()
+  }, [router, redirecting, isClient])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -37,53 +52,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      // Validasi input dasar
-      if (!email || !password) {
-        setError("Email dan password harus diisi")
-        setIsLoading(false)
-        return
-      }
-
-      if (password.length < 6) {
-        setError("Password minimal 6 karakter")
-        setIsLoading(false)
-        return
-      }
-
-      // Coba login menggunakan Azure API terlebih dahulu jika tersedia
-      if (isApiAvailable) {
-        try {
-          const azureRes = await fetch("https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/auth/login", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ email, password }),
-            signal: AbortSignal.timeout(5000) // Timeout setelah 5 detik
-          })
-
-          if (azureRes.ok) {
-            const azureData = await azureRes.json()
-            
-            // Simpan token di localStorage
-            localStorage.setItem("token", azureData.token)
-
-            // Simpan informasi user jika tersedia
-            if (azureData.user) {
-              localStorage.setItem("user", JSON.stringify(azureData.user))
-            }
-
-            // Redirect ke dashboard
-            router.push("/dashboard")
-            return
-          }
-        } catch (azureErr) {
-          console.log("Azure API tidak tersedia, mencoba API lokal")
-          // Lanjut ke API lokal
-        }
-      }
-
-      // Fallback ke API lokal
+      console.log("Memulai proses login untuk:", email)
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -92,42 +61,64 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
 
+      console.log("Login response status:", res.status)
+
       let data
       try {
         data = await res.json()
-      } catch (parseErr) {
-        throw new Error("Gagal memproses respons dari server")
-      }
-
-      if (!res.ok) {
-        // Tampilkan pesan error dari server atau pesan default
-        const errorMessage = data.error || data.message || "Login gagal"
-        setError(errorMessage)
+        console.log("Login response data:", {
+          success: res.ok,
+          hasToken: !!data.token,
+          hasUser: !!data.user,
+          error: data.error,
+        })
+      } catch (parseError) {
+        console.error("Error parsing login response:", parseError)
+        setError("Gagal memproses respons dari server")
+        setIsLoading(false)
         return
       }
 
-      // Jika server memberikan pesan peringatan tapi login berhasil
-      if (data.warning) {
-        console.warn("Login warning:", data.warning)
+      if (!res.ok) {
+        setError(data.error || "Login gagal")
+        setIsLoading(false)
+        return
       }
 
       // Simpan token di localStorage
-      localStorage.setItem("token", data.token)
+      if (data.token) {
+        localStorage.setItem("token", data.token)
+        console.log("Token berhasil disimpan di localStorage")
+      } else {
+        console.error("Token tidak ada dalam respons")
+        setError("Format respons tidak valid")
+        setIsLoading(false)
+        return
+      }
 
       // Simpan informasi user jika tersedia
       if (data.user) {
         localStorage.setItem("user", JSON.stringify(data.user))
-        
-        // Log untuk debugging
-        console.log(`Login berhasil sebagai ${data.user.role}: ${data.user.nama}`)
+        console.log("User data berhasil disimpan:", data.user)
+      } else {
+        console.error("User data tidak ada dalam respons")
+        setError("Format respons tidak valid")
+        setIsLoading(false)
+        return
       }
 
-      // Redirect ke dashboard
-      router.push("/dashboard")
+      // Tunggu sebentar untuk memastikan data tersimpan
+      setTimeout(() => {
+        // Set flag agar tidak terjadi redirect loop
+        setRedirecting(true)
+        console.log("Login berhasil, mengarahkan ke dashboard...")
+
+        // Redirect ke dashboard dengan replace
+        router.replace("/dashboard")
+      }, 500)
     } catch (err) {
       console.error("Login error:", err)
-      setError("Terjadi kesalahan saat menghubungi server. Coba lagi dalam beberapa saat.")
-    } finally {
+      setError("Terjadi kesalahan saat komunikasi dengan server. Coba lagi.")
       setIsLoading(false)
     }
   }
@@ -192,7 +183,7 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || redirecting}
           style={{
             backgroundColor: "#40e0d0",
             padding: "12px",
@@ -200,16 +191,17 @@ export default function LoginPage() {
             border: "none",
             fontWeight: "bold",
             color: "#333",
-            cursor: isLoading ? "not-allowed" : "pointer",
-            opacity: isLoading ? 0.7 : 1,
+            cursor: isLoading || redirecting ? "not-allowed" : "pointer",
+            opacity: isLoading || redirecting ? 0.7 : 1,
           }}
         >
-          {isLoading ? "Loading..." : "Login"}
+          {isLoading ? "Loading..." : redirecting ? "Redirecting..." : "Login"}
         </button>
       </form>
 
       <button
         onClick={() => router.push("/auth/register")}
+        disabled={redirecting}
         style={{
           marginTop: "1rem",
           padding: "12px",
@@ -217,24 +209,13 @@ export default function LoginPage() {
           border: "1px solid white",
           background: "transparent",
           color: "white",
-          cursor: "pointer",
+          cursor: redirecting ? "not-allowed" : "pointer",
           width: "300px",
+          opacity: redirecting ? 0.7 : 1,
         }}
       >
         Register
       </button>
-
-      {!isApiAvailable && (
-        <p style={{ 
-          fontSize: "0.8rem", 
-          marginTop: "1rem", 
-          color: "#ffbaba", 
-          textAlign: "center",
-          maxWidth: "300px" 
-        }}>
-          Beberapa layanan mungkin tidak tersedia. Tim kami sedang menangani masalah ini.
-        </p>
-      )}
     </div>
   )
 }
