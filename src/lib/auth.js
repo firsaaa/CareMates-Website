@@ -19,7 +19,7 @@ export function verifyToken(token) {
   const secret = process.env.JWT_SECRET || "V4ldick999!"
   try {
     return jwt.verify(token, secret)
-  } catch (_) {
+  } catch {
     return null
   }
 }

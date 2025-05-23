@@ -113,7 +113,7 @@ export default function RegisterPage() {
       let data
       try {
         data = await res.json()
-      } catch (error) {
+      } catch {
         throw new Error("Gagal memproses respons dari server")
       }
 
