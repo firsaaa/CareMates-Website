@@ -4,83 +4,51 @@ import { useState, useEffect, useRef } from "react"
 import { useAdminLocation, useIoTWebSocket, calculateDistance } from "../../lib/distance-calculator"
 import { saveAhmadDistance, saveIoTConnectionStatus } from "../../lib/distance-store"
 
-// Komponen untuk monitoring jarak secara real-time
 export default function DistanceMonitor({ patientId, onDistanceUpdate, onConnectionStatusUpdate }) {
   const [distance, setDistance] = useState(null)
-  const { location: adminLocation } = useAdminLocation() // Removed unused locationError
+  const { location: adminLocation } = useAdminLocation()
   const { iotData, connectionStatus } = useIoTWebSocket()
   const lastDistanceRef = useRef(null)
-  // Hanya Ahmad (ID 1) yang menggunakan real-time distance
   const isAhmad = Number.parseInt(patientId) === 1
 
-  // Effect untuk menghitung jarak real-time
   useEffect(() => {
     if (!isAhmad) return
+    if (!adminLocation || !iotData || !iotData.latitude || !iotData.longitude) return
 
-    // Jika tidak ada data lokasi atau IoT, tidak bisa menghitung jarak
-    if (!adminLocation || !iotData || !iotData.latitude || !iotData.longitude) {
-      console.log("[DistanceMonitor] Waiting for location data...")
-      return
-    }
-
-    // Hitung jarak antara admin dan IoT device
     const calculatedDistance = calculateDistance(
       adminLocation.latitude,
       adminLocation.longitude,
       iotData.latitude,
-      iotData.longitude,
+      iotData.longitude
     )
 
-    // Bulatkan jarak ke integer
     const roundedDistance = Math.round(calculatedDistance)
 
-    // Hanya update jika jarak berubah signifikan (> 2 meter)
     if (lastDistanceRef.current === null || Math.abs(lastDistanceRef.current - roundedDistance) > 2) {
-      console.log(`[DistanceMonitor] Distance updated: ${roundedDistance}m`)
       setDistance(roundedDistance)
       lastDistanceRef.current = roundedDistance
-
-      // Simpan ke centralized store
       saveAhmadDistance(roundedDistance)
-
-      // Callback untuk parent component
-      if (onDistanceUpdate) {
-        onDistanceUpdate(patientId, roundedDistance)
-      }
+      if (onDistanceUpdate) onDistanceUpdate(patientId, roundedDistance)
     }
   }, [adminLocation, iotData, isAhmad, patientId, onDistanceUpdate])
 
-  // Effect untuk update status koneksi
   useEffect(() => {
     if (!isAhmad) return
-
-    console.log(`[DistanceMonitor] Connection status: ${connectionStatus}`)
-
-    // Simpan ke centralized store
     saveIoTConnectionStatus(connectionStatus)
-
-    // Callback untuk parent component
-    if (onConnectionStatusUpdate) {
-      onConnectionStatusUpdate(connectionStatus)
-    }
+    if (onConnectionStatusUpdate) onConnectionStatusUpdate(connectionStatus)
   }, [connectionStatus, isAhmad, onConnectionStatusUpdate])
 
-  // Log distance for debugging (using the distance state)
   useEffect(() => {
     if (distance !== null) {
       console.log(`[DistanceMonitor] Current distance state: ${distance}m`)
     }
   }, [distance])
 
-  // Komponen ini tidak merender UI
   return null
 }
 
-// Komponen untuk menampilkan status jarak
 export function DistanceStatus({ patientId, connectionStatus }) {
   const isAhmad = Number.parseInt(patientId) === 1
-
-  // Jika bukan Ahmad, tidak perlu menampilkan status
   if (!isAhmad) return null
 
   return (
