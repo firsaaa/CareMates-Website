@@ -1,19 +1,127 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import Image from "next/image"
+import DistanceMonitor, { DistanceStatus } from "../components/distance-monitor"
 import { useRouter } from "next/navigation"
+import { getAhmadDistance, getIoTConnectionStatus, getAhmadDistanceSync } from "../../lib/distance-store"
 
 export default function DashboardContent() {
   const router = useRouter()
   const [careData, setCareData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
-  const [filter, setFilter] = useState("all") // "all", "caregiver", "patient"
+  const [filter, setFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [user, setUser] = useState(null)
+  const [realTimeDistances, setRealTimeDistances] = useState({
+    1: getAhmadDistanceSync(), // Initialize with current value
+  })
+  const [iotConnectionStatus, setIoTConnectionStatus] = useState(getIoTConnectionStatus())
+
+  // Subscribe ke event updates
+  useEffect(() => {
+    // Handler untuk update jarak
+    const handleDistanceUpdate = (event) => {
+      const { distance } = event.detail
+      console.log(`[Dashboard] Received distance update: ${distance}m`)
+      setRealTimeDistances((prev) => ({
+        ...prev,
+        1: distance,
+      }))
+
+      // Update careData juga untuk Ahmad
+      setCareData((prevData) =>
+        prevData.map((item) => {
+          if (item.role === "patient" && item.id === 1) {
+            return {
+              ...item,
+              distance: distance,
+            }
+          }
+          return item
+        }),
+      )
+    }
+
+    // Handler untuk update status koneksi
+    const handleStatusUpdate = (event) => {
+      const { status } = event.detail
+      console.log(`[Dashboard] Received IoT status update: ${status}`)
+      setIoTConnectionStatus(status)
+    }
+
+    // Register event listeners
+    window.addEventListener("ahmad-distance-update", handleDistanceUpdate)
+    window.addEventListener("iot-status-update", handleStatusUpdate)
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("ahmad-distance-update", handleDistanceUpdate)
+      window.removeEventListener("iot-status-update", handleStatusUpdate)
+    }
+  }, [])
+
+  // Stabilized distance update function
+  const handleDistanceUpdate = useCallback((patientId, distance) => {
+    setRealTimeDistances((prev) => {
+      // Hanya update jika jarak benar-benar berubah
+      if (prev[patientId] !== distance) {
+        console.log(`Distance update for patient ${patientId}: ${distance}m`)
+        return {
+          ...prev,
+          [patientId]: distance,
+        }
+      }
+      return prev
+    })
+  }, [])
+
+  // Stabilized connection status update function
+  const handleConnectionStatusUpdate = useCallback((status) => {
+    setIoTConnectionStatus((prevStatus) => {
+      if (prevStatus !== status) {
+        console.log(`IoT connection status: ${status}`)
+        return status
+      }
+      return prevStatus
+    })
+  }, [])
+
+  // Memoized filtered data untuk menghindari re-calculation yang tidak perlu
+  const filteredData = useMemo(() => {
+    return careData.filter((item) => {
+      const roleMatch = filter === "all" || item.role === filter
+      const searchMatch =
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.role === "patient" && item.caregiver.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item.role === "caregiver" &&
+          item.patients &&
+          Array.isArray(item.patients) &&
+          item.patients.some((p) => p.toLowerCase().includes(searchTerm.toLowerCase())))
+
+      return roleMatch && searchMatch
+    })
+  }, [careData, filter, searchTerm])
 
   useEffect(() => {
     console.log("=== DASHBOARD CONTENT: Memulai fetch data ===")
+
+    // Load saved distances dari centralized store
+    const savedDistance = getAhmadDistance()
+    const savedStatus = getIoTConnectionStatus()
+
+    if (savedDistance !== null) {
+      setRealTimeDistances((prev) => ({
+        ...prev,
+        1: savedDistance,
+      }))
+      console.log("[Dashboard] Loaded saved distance for Ahmad:", savedDistance)
+    }
+
+    if (savedStatus) {
+      setIoTConnectionStatus(savedStatus)
+      console.log("[Dashboard] Loaded saved IoT status:", savedStatus)
+    }
 
     // Check authentication
     const token = localStorage.getItem("token")
@@ -28,7 +136,6 @@ export default function DashboardContent() {
     // Fetch user data
     const fetchUserData = async () => {
       try {
-        // Decode token to get user ID
         const userId = getUserIdFromToken(token)
         console.log("DASHBOARD CONTENT: User ID dari token:", userId)
 
@@ -49,10 +156,6 @@ export default function DashboardContent() {
         setUser(userData)
       } catch (error) {
         console.error("DASHBOARD CONTENT: Error fetching user data:", error)
-        // Jangan langsung redirect, biarkan dashboard tetap berjalan
-        // localStorage.removeItem("token")
-        // localStorage.removeItem("user")
-        // router.replace("/auth/login")
       }
     }
 
@@ -61,69 +164,34 @@ export default function DashboardContent() {
       try {
         console.log("DASHBOARD CONTENT: Memulai fetch dashboard data")
 
-        // Fetch all users to get caregivers
-        const usersRes = await fetch("/api/users", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        // Fetch all required data
+        const [usersRes, patientRes, assignmentRes, devicesRes] = await Promise.all([
+          fetch("/api/users", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/patients", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/assignments", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/devices", { headers: { Authorization: `Bearer ${token}` } }),
+        ])
 
-        if (!usersRes.ok) {
-          throw new Error("Failed to fetch users")
+        if (!usersRes.ok || !patientRes.ok || !assignmentRes.ok || !devicesRes.ok) {
+          throw new Error("Failed to fetch data")
         }
 
-        const users = await usersRes.json()
-        console.log("DASHBOARD CONTENT: Users data:", users.length, "users")
+        const [users, patients, assignments, devices] = await Promise.all([
+          usersRes.json(),
+          patientRes.json(),
+          assignmentRes.json(),
+          devicesRes.json(),
+        ])
+
+        console.log("DASHBOARD CONTENT: All data fetched successfully")
+        console.log("DASHBOARD CONTENT: Devices data:", devices)
 
         // Filter caregivers from users
         const caregivers = users.filter((user) => user.role === "caregiver")
 
-        // Fetch patients
-        const patientRes = await fetch("/api/patients", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-
-        if (!patientRes.ok) {
-          throw new Error("Failed to fetch patients")
-        }
-
-        const patients = await patientRes.json()
-        console.log("DASHBOARD CONTENT: Patients data:", patients.length, "patients")
-
-        // Fetch assignments to link caregivers and patients
-        const assignmentRes = await fetch("/api/assignments", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-
-        if (!assignmentRes.ok) {
-          throw new Error("Failed to fetch assignments")
-        }
-
-        const assignments = await assignmentRes.json()
-        console.log("DASHBOARD CONTENT: Assignments data:", assignments.length, "assignments")
-
-        // Fetch devices to check bracelet status
-        const devicesRes = await fetch("/api/devices", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-
-        if (!devicesRes.ok) {
-          throw new Error("Failed to fetch devices")
-        }
-
-        const devices = await devicesRes.json()
-        console.log("DASHBOARD CONTENT: Devices data:", devices.length, "devices")
-
-        // Generate dummy distance data instead of fetching from API
-        const dummyDistanceData = patients.map((patient) => ({
-          id_patient: patient.id,
-          jarak_terakhir: Math.floor(Math.random() * 100), // Random distance between 0-100 meters
-        }))
-
         // Process caregiver data
         const processedCaregivers = caregivers.map((caregiver) => {
-          // Find assignments for this caregiver
           const caregiverAssignments = assignments.filter((a) => a.caregiver_id === caregiver.id)
-
-          // Get patient details for this caregiver
           const patientIds = caregiverAssignments.map((a) => a.patient_id)
           const assignedPatients = patients.filter((p) => patientIds.includes(p.id))
 
@@ -132,27 +200,27 @@ export default function DashboardContent() {
             name: caregiver.nama,
             role: "caregiver",
             patients: assignedPatients.map((p) => p.nama),
-            online: true, // Default to true as we don't have online status in our API
+            online: true,
           }
         })
 
         // Process patient data
         const processedPatients = patients.map((patient) => {
-          // Find assignment for this patient
           const patientAssignment = assignments.find((a) => a.patient_id === patient.id)
-
-          // Find caregiver for this patient
           const caregiver = patientAssignment ? caregivers.find((c) => c.id === patientAssignment.caregiver_id) : null
-
-          // Find patient's device
           const device = devices.find((d) => d.id === patient.device_id)
-
-          // Get device status
           const braceletStatus = device ? device.status === "aktif" : false
 
-          // Get dummy distance data for this patient
-          const distanceData = dummyDistanceData.find((j) => j.id_patient === patient.id)
-          const distance = distanceData ? distanceData.jarak_terakhir : 0
+          // Gunakan real-time distance untuk Ahmad (id: 1), dummy untuk yang lain
+          let distance
+          if (patient.id === 1) {
+            // Gunakan jarak dari centralized store untuk Ahmad
+            distance = realTimeDistances[1] || getAhmadDistanceSync()
+            console.log(`Using real-time distance for Ahmad: ${distance}m`)
+          } else {
+            // Generate consistent dummy data berdasarkan patient ID
+            distance = ((patient.id * 17) % 100) + 10 // Consistent dummy data
+          }
 
           return {
             id: patient.id,
@@ -161,6 +229,7 @@ export default function DashboardContent() {
             caregiver: caregiver ? caregiver.nama : "Unassigned",
             braceletStatus: braceletStatus,
             distance: distance,
+            device_id: patient.device_id, // Tambahkan device_id
           }
         })
 
@@ -179,12 +248,11 @@ export default function DashboardContent() {
 
     fetchUserData()
     fetchDashboardData()
-  }, [router])
+  }, [router, realTimeDistances])
 
   // Helper function to extract user ID from JWT token
   const getUserIdFromToken = (token) => {
     try {
-      // Basic JWT parsing
       const base64Url = token.split(".")[1]
       const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
       const jsonPayload = decodeURIComponent(
@@ -195,7 +263,7 @@ export default function DashboardContent() {
       )
 
       const decoded = JSON.parse(jsonPayload)
-      return decoded.sub ? decoded.sub : decoded.id // Coba kedua field
+      return decoded.sub ? decoded.sub : decoded.id
     } catch (error) {
       console.error("Error decoding token:", error)
       return null
@@ -209,32 +277,14 @@ export default function DashboardContent() {
     router.replace("/auth/login")
   }
 
-  const getFilteredData = () => {
-    return careData.filter((item) => {
-      // Filter by role
-      const roleMatch = filter === "all" || item.role === filter
-
-      // Filter by search term
-      const searchMatch =
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.role === "patient" && item.caregiver.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (item.role === "caregiver" &&
-          item.patients &&
-          Array.isArray(item.patients) &&
-          item.patients.some((p) => p.toLowerCase().includes(searchTerm.toLowerCase())))
-
-      return roleMatch && searchMatch
-    })
-  }
-
   const getStatusColor = (status) => {
-    return status ? "#4ade80" : "#f87171" // green for on, red for off
+    return status ? "#4ade80" : "#f87171"
   }
 
   const getDistanceColor = (distance) => {
-    if (distance <= 10) return "#4ade80" // green for close
-    if (distance <= 50) return "#facc15" // yellow for medium distance
-    return "#f87171" // red for far
+    if (distance <= 10) return "#4ade80"
+    if (distance <= 50) return "#facc15"
+    return "#f87171"
   }
 
   if (isLoading) {
@@ -266,6 +316,13 @@ export default function DashboardContent() {
         backgroundColor: "#f9fafb",
       }}
     >
+      {/* Distance Monitor Component - Berjalan di background */}
+      <DistanceMonitor
+        patientId={1}
+        onDistanceUpdate={handleDistanceUpdate}
+        onConnectionStatusUpdate={handleConnectionStatusUpdate}
+      />
+
       {/* Header */}
       <header
         style={{
@@ -284,6 +341,20 @@ export default function DashboardContent() {
 
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           {user && <span>{user.nama}</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div
+              style={{
+                width: "0.5rem",
+                height: "0.5rem",
+                borderRadius: "9999px",
+                backgroundColor: iotConnectionStatus === "connected" ? "#4ade80" : "#f87171",
+                transition: "background-color 0.5s ease", // Smooth transition
+              }}
+            />
+            <span style={{ fontSize: "0.75rem" }}>
+              IoT {iotConnectionStatus === "connected" ? "Connected" : "Disconnected"}
+            </span>
+          </div>
           <button
             onClick={handleLogout}
             style={{
@@ -383,7 +454,7 @@ export default function DashboardContent() {
             gap: "1.5rem",
           }}
         >
-          {getFilteredData().map((item) => (
+          {filteredData.map((item) => (
             <div
               key={item.id}
               style={{
@@ -476,10 +547,21 @@ export default function DashboardContent() {
                             backgroundColor: getDistanceColor(item.distance),
                           }}
                         ></div>
-                        <span>{item.distance} meters</span>
+                        <span>
+                          {item.distance} meters
+                          {item.id === 1 && <span style={{ fontSize: "0.75rem", color: "#6b7280" }}> (Real-time)</span>}
+                        </span>
                       </div>
                     </div>
                   </div>
+
+                  <div>
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Device ID:</p>
+                    <p>{item.device_id || "Tidak tersedia"}</p>
+                  </div>
+
+                  {/* Status IoT untuk Ahmad */}
+                  {item.id === 1 && <DistanceStatus patientId={item.id} connectionStatus={iotConnectionStatus} />}
                 </>
               )}
 
@@ -505,7 +587,7 @@ export default function DashboardContent() {
           ))}
         </div>
 
-        {getFilteredData().length === 0 && (
+        {filteredData.length === 0 && (
           <div
             style={{
               textAlign: "center",
