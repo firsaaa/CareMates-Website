@@ -20,14 +20,13 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isApiAvailable, setIsApiAvailable] = useState(true)
 
-  // Cek status API saat komponen dimuat
   useEffect(() => {
     async function checkApiStatus() {
       try {
-        const res = await fetch("/", { 
+        const res = await fetch("/", {
           method: "GET",
           cache: "no-store",
-          next: { revalidate: 0 }
+          next: { revalidate: 0 },
         })
         setIsApiAvailable(res.ok)
       } catch (err) {
@@ -50,7 +49,6 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      // Validasi dasar di sisi client
       if (form.password.length < 6) {
         setError("Password harus minimal 6 karakter")
         setIsLoading(false)
@@ -63,7 +61,6 @@ export default function RegisterPage() {
         return
       }
 
-      // Validasi format email sederhana
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(form.email)) {
         setError("Format email tidak valid")
@@ -71,26 +68,28 @@ export default function RegisterPage() {
         return
       }
 
-      // Coba gunakan Azure API jika tersedia
       if (isApiAvailable) {
         try {
-          const azureRes = await fetch("https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/auth/register", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+          const azureRes = await fetch(
+            "https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/auth/register",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(form),
+              signal: AbortSignal.timeout(5000), // Timeout setelah 5 detik
             },
-            body: JSON.stringify(form),
-            signal: AbortSignal.timeout(5000) // Timeout setelah 5 detik
-          })
+          )
 
           if (azureRes.ok) {
-            const azureData = await azureRes.json()
-            
+            await azureRes.json()
+
             setSuccess("Registrasi berhasil! Mengarahkan ke halaman login...")
             setTimeout(() => router.push("/auth/login"), 2000)
             return
           }
-          
+
           // Jika status code bukan 2xx, coba dapatkan pesan error
           if (azureRes.status === 400) {
             const azureError = await azureRes.json()
@@ -114,12 +113,12 @@ export default function RegisterPage() {
       let data
       try {
         data = await res.json()
-      } catch (parseErr) {
+      } catch (error) {
         throw new Error("Gagal memproses respons dari server")
       }
 
       if (!res.ok) {
-        if (data.error && typeof data.error === 'object' && Array.isArray(data.error)) {
+        if (data.error && typeof data.error === "object" && Array.isArray(data.error)) {
           // Handle Zod validation errors array
           setError(data.error.map((err) => err.message).join(", "))
         } else if (data.error) {
@@ -279,15 +278,17 @@ export default function RegisterPage() {
           Login
         </button>
       </form>
-      
+
       {!isApiAvailable && (
-        <p style={{ 
-          fontSize: "0.8rem", 
-          marginTop: "1rem", 
-          color: "#ffbaba", 
-          textAlign: "center",
-          maxWidth: "300px" 
-        }}>
+        <p
+          style={{
+            fontSize: "0.8rem",
+            marginTop: "1rem",
+            color: "#ffbaba",
+            textAlign: "center",
+            maxWidth: "300px",
+          }}
+        >
           Beberapa layanan mungkin tidak tersedia. Tim kami sedang menangani masalah ini.
         </p>
       )}
