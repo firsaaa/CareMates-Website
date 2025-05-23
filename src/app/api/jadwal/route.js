@@ -1,160 +1,70 @@
-import { NextResponse } from 'next/server';
-import pool from '../../../lib/db';
-import { getUserFromRequest, isAuthorized } from '../../../lib/auth';
-import { jadwalSchema } from '../../../lib/validation';
-import { UserRole } from '../../../lib/constants';
+import { NextResponse } from "next/server"
+import { Pool } from "pg"
 
-export async function GET(req) {
-  try {
-    const user = getUserFromRequest(req);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    // Try to use the API endpoint from the image
-    try {
-      const apiResponse = await fetch('https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/jadwal/', {
-        method: 'GET',
-        headers: {
-          'Authorization': req.headers.get('authorization')
-        }
-      });
-      
-      if (apiResponse.ok) {
-        return NextResponse.json(await apiResponse.json());
-      }
-    } catch (apiError) {
-      console.error('Error using external API:', apiError);
-      // Continue with direct database access if API fails
-    }
-    
-    // Admin can see all schedules, caregivers can only see their own schedules
-    let query;
-    let params = [];
-    
-    if (isAuthorized(user, [UserRole.ADMIN])) {
-      query = `
-        SELECT j.*, u.nama as caregiver_nama, p.nama as patient_nama 
-        FROM jadwal j
-        JOIN users u ON j.caregiver_id = u.id
-        JOIN patients p ON j.patient_id = p.id
-      `;
-    } else if (isAuthorized(user, [UserRole.CAREGIVER])) {
-      query = `
-        SELECT j.*, u.nama as caregiver_nama, p.nama as patient_nama 
-        FROM jadwal j
-        JOIN users u ON j.caregiver_id = u.id
-        JOIN patients p ON j.patient_id = p.id
-        WHERE j.caregiver_id = $1
-      `;
-      params = [user.id];
-    } else {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-    
-    const result = await pool.query(query, params);
-    
-    return NextResponse.json(result.rows);
-  } catch (error) {
-    console.error('Error getting schedules:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+// Konfigurasi koneksi database
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
+
+export async function GET(request) {
+  console.log("GET /api/jadwal endpoint dipanggil")
+
+  // Get query parameters
+  const { searchParams } = new URL(request.url)
+  const caregiverId = searchParams.get("caregiver_id")
+  const patientId = searchParams.get("patient_id")
+
+  let whereClause = ""
+  const queryParams = []
+  let paramCounter = 1
+
+  if (caregiverId) {
+    whereClause += " WHERE caregiver_id = $" + paramCounter
+    queryParams.push(caregiverId)
+    paramCounter++
   }
-}
 
-export async function POST(req) {
+  if (patientId) {
+    whereClause += whereClause ? " AND patient_id = $" + paramCounter : " WHERE patient_id = $" + paramCounter
+    queryParams.push(patientId)
+    paramCounter++
+  }
+
   try {
-    const user = getUserFromRequest(req);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    // Admin and caregivers can create schedules
-    if (!isAuthorized(user, [UserRole.ADMIN, UserRole.CAREGIVER])) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-    
-    const body = await req.json();
-    
-    // Validate input
-    const validationResult = jadwalSchema.safeParse(body);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        { error: validationResult.error.errors },
-        { status: 400 }
-      );
-    }
-    
-    // Try to use the API endpoint from the image
+    // Koneksi ke database
+    const client = await pool.connect()
+    console.log("Database connected successfully at:", new Date().toISOString())
+
     try {
-      const apiResponse = await fetch('https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/jadwal/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.get('authorization')
-        },
-        body: JSON.stringify(body)
-      });
-      
-      if (apiResponse.ok) {
-        return NextResponse.json(await apiResponse.json(), { status: 201 });
-      }
-    } catch (apiError) {
-      console.error('Error using external API:', apiError);
-      // Continue with direct database access if API fails
+      // Query untuk mendapatkan data jadwal
+      const query = `
+        SELECT 
+          id, 
+          caregiver_id,
+          patient_id,
+          assignment_id,
+          tanggal,
+          jam_mulai,
+          jam_selesai,
+          status
+        FROM jadwal
+        ${whereClause}
+        ORDER BY tanggal DESC, jam_mulai ASC
+      `
+
+      console.log("Executing jadwal query:", query, "with params:", queryParams)
+      const result = await client.query(query, queryParams)
+      console.log(`Found ${result.rows.length} jadwal records`)
+
+      return NextResponse.json(result.rows)
+    } catch (error) {
+      console.error("Database query error:", error)
+      return NextResponse.json({ error: "Database query error" }, { status: 500 })
+    } finally {
+      client.release()
     }
-    
-    const { caregiver_id, patient_id, tanggal, jam_mulai, jam_selesai, tugas, status } = validationResult.data;
-    
-    // If caregiver is creating schedule, they can only create for themselves
-    if (user.role === UserRole.CAREGIVER && user.id !== caregiver_id) {
-      return NextResponse.json(
-        { error: 'Anda hanya dapat membuat jadwal untuk diri sendiri' },
-        { status: 403 }
-      );
-    }
-    
-    // Check if caregiver is assigned to patient
-    const assignmentResult = await pool.query(
-      'SELECT * FROM caregiver_assignments WHERE caregiver_id = $1 AND patient_id = $2',
-      [caregiver_id, patient_id]
-    );
-    
-    if (assignmentResult.rows.length === 0) {
-      return NextResponse.json(
-        { error: 'Caregiver tidak ditugaskan untuk pasien ini' },
-        { status: 400 }
-      );
-    }
-    
-    // Insert new schedule
-    const result = await pool.query(
-      'INSERT INTO jadwal (caregiver_id, patient_id, tanggal, jam_mulai, jam_selesai, tugas, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [caregiver_id, patient_id, tanggal, jam_mulai, jam_selesai, tugas, status]
-    );
-    
-    return NextResponse.json(result.rows[0], { status: 201 });
   } catch (error) {
-    console.error('Error creating schedule:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error("Error connecting to database:", error)
+    return NextResponse.json({ error: "Database connection error" }, { status: 500 })
   }
 }

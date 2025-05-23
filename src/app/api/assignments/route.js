@@ -1,50 +1,45 @@
-import { NextResponse } from 'next/server';
-import pool from '../../../lib/db';
+import { NextResponse } from "next/server"
+import { Pool } from "pg"
 
-export async function GET(req) {
+// Konfigurasi koneksi database
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
+
+export async function GET(request) {
+  console.log("GET /api/assignments endpoint dipanggil")
+
   try {
-    console.log('GET /api/assignments endpoint dipanggil');
-    
-    // Dapatkan token dari header
-    const authorization = req.headers.get('authorization');
-    
-    if (!authorization || !authorization.startsWith('Bearer ')) {
-      console.log('Token tidak ditemukan dalam header');
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    // Koneksi database dan eksekusi query
-    const client = await pool.connect();
+    // Koneksi ke database
+    const client = await pool.connect()
+    console.log("Database connected successfully at:", new Date().toISOString())
+
     try {
-      // Query untuk mengambil assignment dengan nama caregiver dan patient
+      // Query untuk mendapatkan data assignments
       const query = `
-        SELECT ca.*, 
-               u.nama as caregiver_nama, 
-               p.nama as patient_nama 
-        FROM caregiver_assignments ca
-        JOIN users u ON ca.caregiver_id = u.id
-        JOIN patients p ON ca.patient_id = p.id
-      `;
-      console.log('Executing query for assignments');
-      
-      const result = await client.query(query);
-      console.log(`Found ${result.rows.length} assignments`);
-      
-      return NextResponse.json(result.rows);
-    } catch (dbError) {
-      console.error('Database query error:', dbError);
-      throw dbError;
+        SELECT 
+          id, 
+          caregiver_id,
+          patient_id,
+          tanggal_mulai,
+          tanggal_akhir,
+          title,
+          description
+        FROM caregiver_assignments
+      `
+
+      const result = await client.query(query)
+      console.log(`Found ${result.rows.length} assignment records`)
+
+      return NextResponse.json(result.rows)
+    } catch (error) {
+      console.error("Database query error:", error)
+      return NextResponse.json({ error: "Database query error" }, { status: 500 })
     } finally {
-      client.release();
+      client.release()
     }
   } catch (error) {
-    console.error('Error getting assignments:', error);
-    return NextResponse.json(
-      { error: 'Gagal mengambil data assignment' },
-      { status: 500 }
-    );
+    console.error("Error connecting to database:", error)
+    return NextResponse.json({ error: "Database connection error" }, { status: 500 })
   }
 }
