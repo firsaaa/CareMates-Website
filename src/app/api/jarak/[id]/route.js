@@ -9,6 +9,13 @@ export async function GET(req, { params }) {
     const user = getUserFromRequest(req);
     const jarakId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Check if user has access to this distance
     let query;
     let queryParams = [jarakId];
@@ -60,6 +67,13 @@ export async function PUT(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const jarakId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Get current distance
     const currentDistance = await pool.query(
@@ -136,6 +150,13 @@ export async function DELETE(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const jarakId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Only admin can delete distances
     if (!isAuthorized(user, [UserRole.ADMIN])) {

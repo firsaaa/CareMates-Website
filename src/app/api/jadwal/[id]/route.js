@@ -9,6 +9,13 @@ export async function GET(req, { params }) {
     const user = getUserFromRequest(req);
     const jadwalId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Check if user has access to this schedule
     let query;
     let queryParams = [jadwalId];
@@ -60,6 +67,13 @@ export async function PUT(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const jadwalId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Get current schedule
     const currentSchedule = await pool.query(
@@ -149,6 +163,13 @@ export async function DELETE(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const jadwalId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Only admin can delete schedules
     if (!isAuthorized(user, [UserRole.ADMIN])) {

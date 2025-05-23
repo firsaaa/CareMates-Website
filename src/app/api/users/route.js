@@ -8,6 +8,13 @@ export async function GET(req) {
   try {
     const user = getUserFromRequest(req);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Only admin can get all users
     if (!isAuthorized(user, [UserRole.ADMIN])) {
       return NextResponse.json(
@@ -33,6 +40,13 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const user = getUserFromRequest(req);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Only admin can create users
     if (!isAuthorized(user, [UserRole.ADMIN])) {

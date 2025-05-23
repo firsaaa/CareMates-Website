@@ -13,7 +13,7 @@ export async function comparePassword(password, hash) {
 }
 
 export function generateToken(user) {
-  const secret = process.env.JWT_SECRET || 'default_secret';
+  const secret = process.env.JWT_SECRET || 'V4ldick999!';
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
     secret,
@@ -22,7 +22,7 @@ export function generateToken(user) {
 }
 
 export function verifyToken(token) {
-  const secret = process.env.JWT_SECRET || 'default_secret';
+  const secret = process.env.JWT_SECRET || 'V4ldick999!';
   try {
     return jwt.verify(token, secret);
   } catch (error) {

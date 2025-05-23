@@ -8,6 +8,30 @@ export async function GET(req) {
   try {
     const user = getUserFromRequest(req);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch('https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/jadwal/', {
+        method: 'GET',
+        headers: {
+          'Authorization': req.headers.get('authorization')
+        }
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
+    }
+    
     // Admin can see all schedules, caregivers can only see their own schedules
     let query;
     let params = [];
@@ -51,6 +75,13 @@ export async function POST(req) {
   try {
     const user = getUserFromRequest(req);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Admin and caregivers can create schedules
     if (!isAuthorized(user, [UserRole.ADMIN, UserRole.CAREGIVER])) {
       return NextResponse.json(
@@ -68,6 +99,25 @@ export async function POST(req) {
         { error: validationResult.error.errors },
         { status: 400 }
       );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch('https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/jadwal/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': req.headers.get('authorization')
+        },
+        body: JSON.stringify(body)
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json(), { status: 201 });
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
     }
     
     const { caregiver_id, patient_id, tanggal, jam_mulai, jam_selesai, tugas, status } = validationResult.data;

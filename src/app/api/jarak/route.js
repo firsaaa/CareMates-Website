@@ -8,6 +8,13 @@ export async function POST(req) {
   try {
     const user = getUserFromRequest(req);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Admin and caregivers can create distances
     if (!isAuthorized(user, [UserRole.ADMIN, UserRole.CAREGIVER])) {
       return NextResponse.json(
@@ -59,6 +66,56 @@ export async function POST(req) {
     return NextResponse.json(result.rows[0], { status: 201 });
   } catch (error) {
     console.error('Error creating distance:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req) {
+  try {
+    const user = getUserFromRequest(req);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Admin can see all distances, caregivers can only see their own distances
+    let query;
+    let params = [];
+    
+    if (isAuthorized(user, [UserRole.ADMIN])) {
+      query = `
+        SELECT j.*, u.nama as caregiver_nama, p.nama as patient_nama 
+        FROM jarak j
+        JOIN users u ON j.id_caregiver = u.id
+        JOIN patients p ON j.id_patient = p.id
+      `;
+    } else if (isAuthorized(user, [UserRole.CAREGIVER])) {
+      query = `
+        SELECT j.*, u.nama as caregiver_nama, p.nama as patient_nama 
+        FROM jarak j
+        JOIN users u ON j.id_caregiver = u.id
+        JOIN patients p ON j.id_patient = p.id
+        WHERE j.id_caregiver = $1
+      `;
+      params = [user.id];
+    } else {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      );
+    }
+    
+    const result = await pool.query(query, params);
+    
+    return NextResponse.json(result.rows);
+  } catch (error) {
+    console.error('Error getting distances:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

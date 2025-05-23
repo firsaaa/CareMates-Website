@@ -9,6 +9,30 @@ export async function GET(req, { params }) {
     const user = getUserFromRequest(req);
     const deviceId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch(`https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/devices/${deviceId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': req.headers.get('authorization')
+        }
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
+    }
+    
     // Check if user has access to this device
     let hasAccess = false;
     
@@ -58,6 +82,13 @@ export async function PUT(req, { params }) {
     const user = getUserFromRequest(req);
     const deviceId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Only admin can update devices
     if (!isAuthorized(user, [UserRole.ADMIN])) {
       return NextResponse.json(
@@ -75,6 +106,25 @@ export async function PUT(req, { params }) {
         { error: validationResult.error.errors },
         { status: 400 }
       );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch(`https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/devices/${deviceId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': req.headers.get('authorization')
+        },
+        body: JSON.stringify(body)
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
     }
     
     const { serial_number, tipe, status, last_synced_at } = validationResult.data;
@@ -120,12 +170,36 @@ export async function DELETE(req, { params }) {
     const user = getUserFromRequest(req);
     const deviceId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Only admin can delete devices
     if (!isAuthorized(user, [UserRole.ADMIN])) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 403 }
       );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch(`https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/devices/${deviceId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': req.headers.get('authorization')
+        }
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
     }
     
     // Check if device is assigned to any patient

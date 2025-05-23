@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
-import pool from '../../lib/db';
-import { getUserFromRequest, isAuthorized } from '../../lib/auth';
-import { notifikasiSchema } from '../../lib/validation';
-import { UserRole } from '../../lib/constants';
+import pool from '../../../lib/db';
+import { getUserFromRequest, isAuthorized } from '../../../lib/auth';
+import { notifikasiSchema } from '../../../lib/validation';
+import { UserRole } from '../../../lib/constants';
 
 export async function GET(req) {
   try {
     const user = getUserFromRequest(req);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Admin can see all notifications, caregivers can only see their own notifications
     let query;
@@ -50,6 +57,13 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const user = getUserFromRequest(req);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Admin and system can create notifications
     if (!isAuthorized(user, [UserRole.ADMIN])) {

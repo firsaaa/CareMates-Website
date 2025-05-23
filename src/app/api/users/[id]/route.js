@@ -8,6 +8,13 @@ export async function GET(req, { params }) {
     const user = getUserFromRequest(req);
     const userId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Users can only access their own data unless they're admin
     if (user.id !== userId && !isAuthorized(user, [UserRole.ADMIN])) {
       return NextResponse.json(
@@ -42,6 +49,13 @@ export async function PUT(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const userId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Users can only update their own data unless they're admin
     if (user.id !== userId && !isAuthorized(user, [UserRole.ADMIN])) {
@@ -113,6 +127,13 @@ export async function DELETE(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const userId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Only admin can delete users
     if (!isAuthorized(user, [UserRole.ADMIN])) {

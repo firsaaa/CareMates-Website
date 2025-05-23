@@ -9,6 +9,13 @@ export async function GET(req, { params }) {
     const user = getUserFromRequest(req);
     const patientId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Check if user has access to this patient
     let hasAccess = false;
     
@@ -56,6 +63,13 @@ export async function PUT(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const patientId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Only admin can update patients
     if (!isAuthorized(user, [UserRole.ADMIN])) {
@@ -105,6 +119,13 @@ export async function DELETE(req, { params }) {
   try {
     const user = getUserFromRequest(req);
     const patientId = parseInt(params.id);
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     // Only admin can delete patients
     if (!isAuthorized(user, [UserRole.ADMIN])) {

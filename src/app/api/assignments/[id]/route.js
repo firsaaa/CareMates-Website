@@ -9,6 +9,30 @@ export async function GET(req, { params }) {
     const user = getUserFromRequest(req);
     const assignmentId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch(`https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/assignments/${assignmentId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': req.headers.get('authorization')
+        }
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
+    }
+    
     // Check if user has access to this assignment
     let query;
     let queryParams = [assignmentId];
@@ -61,6 +85,13 @@ export async function PUT(req, { params }) {
     const user = getUserFromRequest(req);
     const assignmentId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Only admin can update assignments
     if (!isAuthorized(user, [UserRole.ADMIN])) {
       return NextResponse.json(
@@ -78,6 +109,25 @@ export async function PUT(req, { params }) {
         { error: validationResult.error.errors },
         { status: 400 }
       );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch(`https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/assignments/${assignmentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': req.headers.get('authorization')
+        },
+        body: JSON.stringify(body)
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
     }
     
     const { caregiver_id, patient_id, tanggal_mulai, tanggal_akhir } = validationResult.data;
@@ -136,12 +186,36 @@ export async function DELETE(req, { params }) {
     const user = getUserFromRequest(req);
     const assignmentId = parseInt(params.id);
     
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     // Only admin can delete assignments
     if (!isAuthorized(user, [UserRole.ADMIN])) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 403 }
       );
+    }
+    
+    // Try to use the API endpoint from the image
+    try {
+      const apiResponse = await fetch(`https://caremates-asafb3frbqcqdbdb.southeastasia-01.azurewebsites.net/api/v1/caregiver/assignments/${assignmentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': req.headers.get('authorization')
+        }
+      });
+      
+      if (apiResponse.ok) {
+        return NextResponse.json(await apiResponse.json());
+      }
+    } catch (apiError) {
+      console.error('Error using external API:', apiError);
+      // Continue with direct database access if API fails
     }
     
     // Delete assignment

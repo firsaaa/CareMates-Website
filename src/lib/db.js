@@ -1,19 +1,12 @@
 import { Pool } from "pg"
 
-// For debugging
-console.log("Database configuration:")
-console.log("Host:", process.env.DATABASE_HOST)
-console.log("Port:", process.env.DATABASE_PORT)
-console.log("Database:", process.env.DATABASE_NAME)
-console.log("User:", process.env.DATABASE_USER)
-console.log("SSL Mode:", process.env.DATABASE_SSLMODE)
-
+// Configuration from environment or use the provided credentials
 const pool = new Pool({
-  user: process.env.DATABASE_USER,
-  password: process.env.DATABASE_PASSWORD,
-  host: process.env.DATABASE_HOST,
+  user: process.env.DATABASE_USER || "postgres",
+  password: process.env.DATABASE_PASSWORD || "V4ldick999!",
+  host: process.env.DATABASE_HOST || "caremates.postgres.database.azure.com",
   port: Number.parseInt(process.env.DATABASE_PORT || "5432"),
-  database: process.env.DATABASE_NAME,
+  database: process.env.DATABASE_NAME || "postgres",
   ssl: process.env.DATABASE_SSLMODE === "require" ? { rejectUnauthorized: false } : undefined,
 })
 
