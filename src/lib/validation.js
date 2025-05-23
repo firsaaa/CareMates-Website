@@ -63,6 +63,14 @@ export const jarakSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email("Email tidak valid"),
-  password: z.string().min(1, "Password tidak boleh kosong"),
-});
+  email: z.string().email("Format email tidak valid"),
+  password: z.string().min(1, "Password wajib diisi"),
+})
+
+export const registerSchema = z.object({
+  nama: z.string().min(2, "Nama harus minimal 2 karakter"),
+  email: z.string().email("Format email tidak valid"),
+  no_telepon: z.string().optional(),
+  password: z.string().min(6, "Password harus minimal 6 karakter"),
+  admin_key: z.string().min(1, "Admin key wajib diisi"),
+})

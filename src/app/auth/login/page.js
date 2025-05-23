@@ -109,11 +109,8 @@ export default function LoginPage() {
 
       // Tunggu sebentar untuk memastikan data tersimpan
       setTimeout(() => {
-        // Set flag agar tidak terjadi redirect loop
         setRedirecting(true)
         console.log("Login berhasil, mengarahkan ke dashboard...")
-
-        // Redirect ke dashboard dengan replace
         router.replace("/dashboard")
       }, 500)
     } catch (err) {
@@ -197,25 +194,26 @@ export default function LoginPage() {
         >
           {isLoading ? "Loading..." : redirecting ? "Redirecting..." : "Login"}
         </button>
-      </form>
 
-      <button
-        onClick={() => router.push("/auth/register")}
-        disabled={redirecting}
-        style={{
-          marginTop: "1rem",
-          padding: "12px",
-          borderRadius: "8px",
-          border: "1px solid white",
-          background: "transparent",
-          color: "white",
-          cursor: redirecting ? "not-allowed" : "pointer",
-          width: "300px",
-          opacity: redirecting ? 0.7 : 1,
-        }}
-      >
-        Register
-      </button>
+        <button
+          onClick={() => router.push("/auth/register")}
+          disabled={redirecting}
+          type="button"
+          style={{
+            marginTop: "0rem",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid white",
+            background: "transparent",
+            color: "white",
+            cursor: redirecting ? "not-allowed" : "pointer",
+            width: "300px",
+            opacity: redirecting ? 0.7 : 1,
+          }}
+        >
+          Daftar Admin Baru
+        </button>
+      </form>
     </div>
   )
 }
