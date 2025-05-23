@@ -2,8 +2,8 @@ import { Pool } from "pg"
 
 // Configuration database
 const pool = new Pool({
-  user: process.env.DATABASE_USER || "postgres",
-  password: process.env.DATABASE_PASSWORD || "V4ldick999!",
+  user: process.env.DATABASE_USER ,
+  password: process.env.DATABASE_PASSWORD,
   host: process.env.DATABASE_HOST || "caremates.postgres.database.azure.com",
   port: Number.parseInt(process.env.DATABASE_PORT || "5432"),
   database: process.env.DATABASE_NAME || "postgres",
