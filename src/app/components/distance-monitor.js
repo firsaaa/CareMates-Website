@@ -7,10 +7,9 @@ import { saveAhmadDistance, saveIoTConnectionStatus } from "../../lib/distance-s
 // Komponen untuk monitoring jarak secara real-time
 export default function DistanceMonitor({ patientId, onDistanceUpdate, onConnectionStatusUpdate }) {
   const [distance, setDistance] = useState(null)
-  const { location: adminLocation, error: locationError } = useAdminLocation()
+  const { location: adminLocation } = useAdminLocation() // Removed unused locationError
   const { iotData, connectionStatus } = useIoTWebSocket()
   const lastDistanceRef = useRef(null)
-
   // Hanya Ahmad (ID 1) yang menggunakan real-time distance
   const isAhmad = Number.parseInt(patientId) === 1
 
@@ -65,6 +64,13 @@ export default function DistanceMonitor({ patientId, onDistanceUpdate, onConnect
       onConnectionStatusUpdate(connectionStatus)
     }
   }, [connectionStatus, isAhmad, onConnectionStatusUpdate])
+
+  // Log distance for debugging (using the distance state)
+  useEffect(() => {
+    if (distance !== null) {
+      console.log(`[DistanceMonitor] Current distance state: ${distance}m`)
+    }
+  }, [distance])
 
   // Komponen ini tidak merender UI
   return null
