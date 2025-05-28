@@ -77,24 +77,31 @@
 //         console.log("PATIENT DETAIL CONTENT: Patient data:", patientData)
 //         setPatient(patientData)
 
-//         // Fetch device data if available
-//         if (patientData.device_id) {
-//           const deviceRes = await fetch(`/api/devices/${patientData.device_id}`, {
-//             headers: { Authorization: `Bearer ${token}` },
-//           })
+//         // Fetch all devices to match dashboard logic
+//         const devicesRes = await fetch(`/api/devices`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//         })
 
-//           if (deviceRes.ok) {
-//             const deviceData = await deviceRes.json()
-//             console.log("PATIENT DETAIL CONTENT: Device data:", deviceData)
-//             // Log the device status to verify
-//             console.log("PATIENT DETAIL CONTENT: Device status:", deviceData.status)
-//             console.log("PATIENT DETAIL CONTENT: Is status 'aktif'?", deviceData.status === "aktif")
-//             setDevice(deviceData)
+//         if (devicesRes.ok) {
+//           const devices = await devicesRes.json()
+//           console.log("PATIENT DETAIL CONTENT: All devices:", devices)
+          
+//           // Find device by patient's device_id
+//           if (patientData.device_id) {
+//             const deviceData = devices.find((d) => d.id === patientData.device_id)
+//             if (deviceData) {
+//               console.log("PATIENT DETAIL CONTENT: Found device data:", deviceData)
+//               console.log("PATIENT DETAIL CONTENT: Device status:", deviceData.status)
+//               console.log("PATIENT DETAIL CONTENT: Is status 'aktif'?", deviceData.status === "aktif")
+//               setDevice(deviceData)
+//             } else {
+//               console.log("PATIENT DETAIL CONTENT: Device not found in devices list")
+//             }
 //           } else {
-//             console.error("Failed to fetch device data:", await deviceRes.text())
+//             console.log("PATIENT DETAIL CONTENT: No device_id available for patient")
 //           }
 //         } else {
-//           console.log("PATIENT DETAIL CONTENT: No device_id available for patient")
+//           console.error("Failed to fetch devices data:", await devicesRes.text())
 //         }
 
 //         // Fetch assignments to get caregiver
@@ -183,8 +190,8 @@
 //     router.back()
 //   }
 
-//   // Compute bracelet status for more consistent usage
-//   const braceletActive = device?.status === "aktif" || false;
+//   // FIXED: Compute bracelet status correctly to match dashboard logic
+//   const braceletStatus = device ? device.status === "aktif" : false
 
 //   if (isLoading) {
 //     return (
@@ -492,11 +499,11 @@
 //                         width: "0.75rem",
 //                         height: "0.75rem",
 //                         borderRadius: "9999px",
-//                         backgroundColor: getStatusColor(braceletActive),
+//                         backgroundColor: getStatusColor(braceletStatus),
 //                         transition: "background-color 0.3s ease",
 //                       }}
 //                     ></div>
-//                     <span>{braceletActive ? "Active" : "Inactive"}</span>
+//                     <span>{braceletStatus ? "Active" : "Inactive"}</span>
 //                   </div>
 //                 </div>
 
@@ -627,7 +634,7 @@
 import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { getAhmadDistance, getIoTConnectionStatus, getAhmadDistanceSync } from "../../../lib/distance-store"
+import { getAhmadDistance, getIoTConnectionStatus, getAhmadDistanceSync, getAhmadCoordinates } from "../../../lib/distance-store"
 
 export default function PatientDetailContent({ patientId }) {
   const router = useRouter()
@@ -638,25 +645,26 @@ export default function PatientDetailContent({ patientId }) {
   const [error, setError] = useState(null)
   const [distance, setDistance] = useState(0)
   const [iotConnectionStatus, setIotConnectionStatus] = useState("disconnected")
+  const [coordinates, setCoordinates] = useState({
+    lastLat: null,
+    lastLon: null,
+    lastUpdate: null
+  })
   const isAhmad = Number.parseInt(patientId) === 1
 
-  // Refs untuk mencegah re-renders berlebihan
   const distanceRef = useRef(distance)
   const statusRef = useRef(iotConnectionStatus)
 
-  // Subscribe ke event updates
   useEffect(() => {
     if (!isAhmad) return
 
-    // Handler untuk update jarak
     const handleDistanceUpdate = (event) => {
       const { distance } = event.detail
-      console.log(`[PatientDetail] Received distance update: ${distance}m`)
+      console.log(`[PatientDetail] Received distance update: ${distance.toFixed(2)}m`)
       setDistance(distance)
       distanceRef.current = distance
     }
 
-    // Handler untuk update status koneksi
     const handleStatusUpdate = (event) => {
       const { status } = event.detail
       console.log(`[PatientDetail] Received IoT status update: ${status}`)
@@ -664,18 +672,29 @@ export default function PatientDetailContent({ patientId }) {
       statusRef.current = status
     }
 
-    // Register event listeners
+    const handleCoordinatesUpdate = (event) => {
+      const { lastLat, lastLon } = event.detail
+      console.log(`[PatientDetail] Received coordinates update - lastLat: ${lastLat}, lastLon: ${lastLon}`)
+      setCoordinates({
+        lastLat: lastLat,
+        lastLon: lastLon,
+        lastUpdate: new Date().toISOString()
+      })
+    }
+
     window.addEventListener("ahmad-distance-update", handleDistanceUpdate)
     window.addEventListener("iot-status-update", handleStatusUpdate)
+    window.addEventListener("ahmad-coordinates-update", handleCoordinatesUpdate)
+    window.addEventListener("iot-coordinates-update", handleCoordinatesUpdate)
 
-    // Cleanup
     return () => {
       window.removeEventListener("ahmad-distance-update", handleDistanceUpdate)
       window.removeEventListener("iot-status-update", handleStatusUpdate)
+      window.removeEventListener("ahmad-coordinates-update", handleCoordinatesUpdate)
+      window.removeEventListener("iot-coordinates-update", handleCoordinatesUpdate)
     }
   }, [isAhmad])
 
-  // Fetch patient data
   useEffect(() => {
     console.log("=== PATIENT DETAIL CONTENT: Memulai fetch data ===")
     console.log("PATIENT DETAIL CONTENT: Patient ID:", patientId)
@@ -688,7 +707,6 @@ export default function PatientDetailContent({ patientId }) {
 
     const fetchPatientData = async () => {
       try {
-        // Fetch patient data
         const patientRes = await fetch(`/api/patients/${patientId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -701,7 +719,6 @@ export default function PatientDetailContent({ patientId }) {
         console.log("PATIENT DETAIL CONTENT: Patient data:", patientData)
         setPatient(patientData)
 
-        // Fetch all devices to match dashboard logic
         const devicesRes = await fetch(`/api/devices`, {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -710,25 +727,15 @@ export default function PatientDetailContent({ patientId }) {
           const devices = await devicesRes.json()
           console.log("PATIENT DETAIL CONTENT: All devices:", devices)
           
-          // Find device by patient's device_id
           if (patientData.device_id) {
             const deviceData = devices.find((d) => d.id === patientData.device_id)
             if (deviceData) {
               console.log("PATIENT DETAIL CONTENT: Found device data:", deviceData)
-              console.log("PATIENT DETAIL CONTENT: Device status:", deviceData.status)
-              console.log("PATIENT DETAIL CONTENT: Is status 'aktif'?", deviceData.status === "aktif")
               setDevice(deviceData)
-            } else {
-              console.log("PATIENT DETAIL CONTENT: Device not found in devices list")
             }
-          } else {
-            console.log("PATIENT DETAIL CONTENT: No device_id available for patient")
           }
-        } else {
-          console.error("Failed to fetch devices data:", await devicesRes.text())
         }
 
-        // Fetch assignments to get caregiver
         const assignmentRes = await fetch(`/api/assignments`, {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -738,7 +745,6 @@ export default function PatientDetailContent({ patientId }) {
           const patientAssignment = assignments.find((a) => a.patient_id === Number.parseInt(patientId))
 
           if (patientAssignment) {
-            // Fetch caregiver data
             const caregiverRes = await fetch(`/api/users/${patientAssignment.caregiver_id}`, {
               headers: { Authorization: `Bearer ${token}` },
             })
@@ -751,18 +757,16 @@ export default function PatientDetailContent({ patientId }) {
           }
         }
 
-        // Untuk Ahmad (ID 1), ambil jarak dari centralized store
         if (Number.parseInt(patientId) === 1) {
-          // Gunakan nilai dari centralized store
           const savedDistance = getAhmadDistance()
           const savedStatus = getIoTConnectionStatus()
+          const savedCoordinates = getAhmadCoordinates()
 
           if (savedDistance !== null) {
             setDistance(savedDistance)
             distanceRef.current = savedDistance
             console.log("[PatientDetail] Loaded saved distance for Ahmad:", savedDistance)
           } else {
-            // Fallback ke nilai default
             setDistance(getAhmadDistanceSync())
           }
 
@@ -771,9 +775,16 @@ export default function PatientDetailContent({ patientId }) {
             statusRef.current = savedStatus
             console.log("[PatientDetail] Loaded saved IoT status:", savedStatus)
           }
+          
+          if (savedCoordinates) {
+            setCoordinates({
+              lastLat: savedCoordinates.lastLat,
+              lastLon: savedCoordinates.lastLon,
+              lastUpdate: savedCoordinates.timestamp || new Date().toISOString()
+            })
+            console.log("[PatientDetail] Loaded saved coordinates for Ahmad:", savedCoordinates)
+          }
         } else {
-          // Generate consistent dummy distance data for other patients
-          // Menggunakan patientId sebagai seed untuk konsistensi
           const dummyDistance = ((Number.parseInt(patientId) * 17) % 100) + 10
           setDistance(dummyDistance)
           console.log("[PatientDetail] Generated dummy distance:", dummyDistance)
@@ -799,22 +810,20 @@ export default function PatientDetailContent({ patientId }) {
     })
   }
 
-  // Ensure this function matches dashboard implementation
   const getStatusColor = (status) => {
-    return status ? "#4ade80" : "#f87171" // green for on, red for off
+    return status ? "#4ade80" : "#f87171"
   }
 
   const getDistanceColor = (distance) => {
-    if (distance <= 10) return "#4ade80" // green for close
-    if (distance <= 50) return "#facc15" // yellow for medium distance
-    return "#f87171" // red for far
+    if (distance <= 10) return "#4ade80"
+    if (distance <= 50) return "#facc15"
+    return "#f87171"
   }
 
   const handleBack = () => {
     router.back()
   }
 
-  // FIXED: Compute bracelet status correctly to match dashboard logic
   const braceletStatus = device ? device.status === "aktif" : false
 
   if (isLoading) {
@@ -980,7 +989,6 @@ export default function PatientDetailContent({ patientId }) {
         backgroundColor: "#f9fafb",
       }}
     >
-      {/* Header */}
       <header
         style={{
           backgroundColor: "#7b42f6",
@@ -1012,9 +1020,7 @@ export default function PatientDetailContent({ patientId }) {
         </button>
       </header>
 
-      {/* Main Content */}
       <main style={{ flex: 1, padding: "2rem", maxWidth: "800px", margin: "0 auto", width: "100%" }}>
-        {/* Back Button */}
         <button
           onClick={handleBack}
           style={{
@@ -1033,7 +1039,6 @@ export default function PatientDetailContent({ patientId }) {
           ← Kembali
         </button>
 
-        {/* Patient Card */}
         <div
           style={{
             backgroundColor: "white",
@@ -1074,7 +1079,6 @@ export default function PatientDetailContent({ patientId }) {
               gap: "1.5rem",
             }}
           >
-            {/* Patient Info */}
             <div>
               <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "1rem", color: "#7b42f6" }}>
                 Informasi Pasien
@@ -1103,7 +1107,6 @@ export default function PatientDetailContent({ patientId }) {
               </div>
             </div>
 
-            {/* Caregiver & Device Info */}
             <div>
               <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "1rem", color: "#7b42f6" }}>
                 Informasi Perawatan
@@ -1144,29 +1147,141 @@ export default function PatientDetailContent({ patientId }) {
                       }}
                     ></div>
                     <span>
-                      {distance} meters
+                      {typeof distance === 'number' ? distance.toFixed(2) : distance} meters
                       {isAhmad && <span style={{ fontSize: "0.75rem", color: "#6b7280" }}> (Real-time)</span>}
                     </span>
                   </div>
                 </div>
+
+                {isAhmad && (
+                  <div>
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280", marginBottom: "0.75rem" }}>GPS Coordinates:</p>
+                    <div style={{ 
+                      backgroundColor: "#f8fafc", 
+                      padding: "1rem", 
+                      borderRadius: "0.75rem",
+                      marginTop: "0.5rem",
+                      fontSize: "0.9rem",
+                      border: "2px solid #cbd5e1",
+                      boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)"
+                    }}>
+                      <div style={{ marginBottom: "0.75rem" }}>
+                        <div style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          marginBottom: "0.5rem",
+                          padding: "0.5rem",
+                          backgroundColor: "#ffffff",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #e2e8f0"
+                        }}>
+                          <span style={{ 
+                            fontWeight: "bold", 
+                            color: "#1e293b", 
+                            minWidth: "80px",
+                            fontSize: "0.85rem"
+                          }}>
+                            Latitude:
+                          </span>
+                          <span style={{ 
+                            color: "#0f766e", 
+                            fontFamily: "monospace",
+                            backgroundColor: "#ecfdf5",
+                            padding: "0.375rem 0.75rem",
+                            borderRadius: "0.375rem",
+                            border: "1px solid #6ee7b7",
+                            fontWeight: "medium",
+                            fontSize: "1rem",
+                            letterSpacing: "0.025em"
+                          }}>
+                            {coordinates.lastLat ? coordinates.lastLat.toString() : "Waiting for GPS signal..."}
+                          </span>
+                        </div>
+                        
+                        <div style={{ 
+                          display: "flex", 
+                          alignItems: "center",
+                          padding: "0.5rem",
+                          backgroundColor: "#ffffff",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #e2e8f0"
+                        }}>
+                          <span style={{ 
+                            fontWeight: "bold", 
+                            color: "#1e293b", 
+                            minWidth: "80px",
+                            fontSize: "0.85rem"
+                          }}>
+                            Longitude:
+                          </span>
+                          <span style={{ 
+                            color: "#0f766e", 
+                            fontFamily: "monospace",
+                            backgroundColor: "#ecfdf5",
+                            padding: "0.375rem 0.75rem",
+                            borderRadius: "0.375rem",
+                            border: "1px solid #6ee7b7",
+                            fontWeight: "medium",
+                            fontSize: "1rem",
+                            letterSpacing: "0.025em"
+                          }}>
+                            {coordinates.lastLon ? coordinates.lastLon.toString() : "Waiting for GPS signal..."}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {(coordinates.lastLat && coordinates.lastLon) && (
+                        <div style={{ 
+                          padding: "0.5rem",
+                          backgroundColor: "#f0f9ff",
+                          borderRadius: "0.375rem",
+                          border: "1px solid #bae6fd"
+                        }}>
+                          <div style={{ fontSize: "0.75rem", color: "#0369a1", fontWeight: "medium", marginBottom: "0.25rem" }}>
+                            📍 Precise Location Data
+                          </div>
+                          <div style={{ fontSize: "0.7rem", color: "#64748b" }}>
+                            Coordinates: {coordinates.lastLat}, {coordinates.lastLon}
+                          </div>
+                          {coordinates.lastUpdate && (
+                            <div style={{ fontSize: "0.65rem", color: "#64748b", fontStyle: "italic", marginTop: "0.25rem" }}>
+                              Last updated: {new Date(coordinates.lastUpdate).toLocaleString('id-ID')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div style={{ 
+                        marginTop: "0.75rem",
+                        fontSize: "0.7rem", 
+                        color: "#64748b",
+                        fontStyle: "italic",
+                        textAlign: "center",
+                        paddingTop: "0.5rem",
+                        borderTop: "1px solid #e2e8f0"
+                      }}>
+                        🛡️ Real-time GPS tracking via IoT device
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Device ID:</p>
                   <p>{patient?.device_id || "Tidak tersedia"}</p>
                 </div>
 
-                {/* IoT Status - hanya untuk Ahmad */}
                 {isAhmad && (
                   <div
                     style={{
                       marginTop: "0.5rem",
-                      padding: "0.5rem",
+                      padding: "0.75rem",
                       backgroundColor: "#f9fafb",
-                      borderRadius: "0.375rem",
+                      borderRadius: "0.5rem",
                       border: "1px solid #e5e7eb",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
                       <div
                         style={{
                           width: "0.5rem",
@@ -1176,15 +1291,16 @@ export default function PatientDetailContent({ patientId }) {
                           transition: "background-color 0.5s ease",
                         }}
                       ></div>
-                      <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+                      <span style={{ fontSize: "0.8rem", color: "#6b7280", fontWeight: "medium" }}>
                         IoT Device: {iotConnectionStatus === "connected" ? "Connected" : "Disconnected"}
-                        {iotConnectionStatus === "connected" && (
-                          <span style={{ fontWeight: "bold", color: "#059669" }}>
-                            {" • "}Real-time GPS tracking active
-                          </span>
-                        )}
                       </span>
                     </div>
+                    {iotConnectionStatus === "connected" && (
+                      <div style={{ fontSize: "0.75rem", color: "#059669", fontWeight: "bold" }}>
+                        ✓ Real-time GPS tracking active
+                        {distance !== null && ` • Current distance: ${distance.toFixed(2)}m`}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1192,7 +1308,6 @@ export default function PatientDetailContent({ patientId }) {
           </div>
         </div>
 
-        {/* Activity Section */}
         <div
           style={{
             backgroundColor: "white",
@@ -1206,7 +1321,6 @@ export default function PatientDetailContent({ patientId }) {
           </h2>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {/* Dummy activity data */}
             {[1, 2, 3].map((item) => (
               <div
                 key={item}
@@ -1239,7 +1353,6 @@ export default function PatientDetailContent({ patientId }) {
         </div>
       </main>
 
-      {/* Footer */}
       <footer
         style={{
           backgroundColor: "#7b42f6",
