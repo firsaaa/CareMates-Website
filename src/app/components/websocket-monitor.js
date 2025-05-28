@@ -1,7 +1,6 @@
 "use client"
-
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState, useEffect, useRef } from "react"
-import Image from "next/image"
 import { useRouter } from "next/navigation"
 
 export default function WebSocketMonitor() {

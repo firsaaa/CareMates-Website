@@ -617,7 +617,7 @@
 //   )
 // }
 "use client"
-
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Image from "next/image"
 import DistanceMonitor, { DistanceStatus } from "../components/distance-monitor"
